@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+@import "tailwindcss";
+
+
+  
+@theme {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground)
+}
+
+:root {
+    font-family: "Inter";
+    --background: oklch(94.58% 0.0197 305.26);
+    --foreground: oklch(21.24% 0.1301 264.17);
+}
+
