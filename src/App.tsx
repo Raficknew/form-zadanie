@@ -10,23 +10,28 @@ import { useEffect, useRef, useState } from "react";
 
 const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const WORKOUT_TIMES = ["12:00", "14:00", "16:30", "18:30", "20:00"];
+interface FreeDay {
+  date: string;
+  type: string;
+  name: string;
+}
 
 function App() {
   const key = import.meta.env.VITE_API_KEY;
+
+  const [name, setName] = useState("");
+  const [surnName, setSurName] = useState("");
+  const [email, setEmail] = useState("");
 
   const [inValidEmail, setInValidEmail] = useState<boolean | string>("");
 
   const [age, setAge] = useState(8);
 
-  const [file, setFile] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [file, setFile] = useState<File | null>();
   const [hoverButton, setHoverButton] = useState(false);
 
   const [currentDate, setCurrentDate] = useState(new Date());
-  interface FreeDay {
-    date: string;
-    type: string;
-    name: string;
-  }
 
   const [freeDays, setFreeDays] = useState<FreeDay[]>();
   const firstDayOfMonth = startOfMonth(currentDate);
@@ -35,12 +40,15 @@ function App() {
     start: firstDayOfMonth,
     end: lastDayOfMonth,
   });
-  const startDayIndex = getDay(firstDayOfMonth);
+  const startDayIndex = (getDay(firstDayOfMonth) + 6) % 7;
   const [selectedDate, setSelectedDate] = useState("");
   const holiday = isHolidayDay(selectedDate);
   const [selectedTime, setSelectedTime] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const rangeRef = useRef<HTMLInputElement>(null);
+  const [thumbPosition, setThumbPosition] = useState(0);
 
   useEffect(() => {
     fetch("https://api.api-ninjas.com/v1/holidays?country=PL", {
@@ -61,16 +69,12 @@ function App() {
       });
   }, [key]);
 
-  const handleChange = (path: string) => {
-    const filePath = path;
-
-    const fileName = filePath.split("\\").pop();
-
-    if (fileName == null) {
-      return setFile("");
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const selectedFile = e.target.files[0];
+      setFileName(selectedFile.name);
+      setFile(selectedFile);
     }
-
-    setFile(fileName);
   };
 
   function validateEmail(email: string) {
@@ -78,7 +82,21 @@ function App() {
     if (emailRegex.test(email) == false) {
       setInValidEmail(true);
     } else {
+      setEmail(email);
       setInValidEmail(false);
+    }
+  }
+
+  function handleChangeOfRange(number: number) {
+    setAge(number);
+
+    if (rangeRef.current) {
+      const meter =
+        (number - +rangeRef.current.min) * (+rangeRef.current.max - 0);
+      const denominator = +rangeRef.current.max - +rangeRef.current.min;
+      const result = meter / denominator;
+
+      setThumbPosition(result);
     }
   }
 
@@ -92,7 +110,7 @@ function App() {
     const isNationalDay = freeDaysInCurrentMonth?.some(
       (freeDay) =>
         freeDay.date.split("-")[2] === day &&
-        freeDay.type === "national_holiday"
+        freeDay.type === "NATIONAL_HOLIDAY"
     );
 
     return !isNationalDay;
@@ -106,26 +124,75 @@ function App() {
     if (!freeDaysInCurrentMonth) return "";
 
     const holiday = freeDaysInCurrentMonth.find(
-      (freeDay) => freeDay.date.split("-")[2] === day
+      (freeDay) => freeDay.date === day && freeDay.type === "OBSERVANCE"
     );
 
     return holiday ? holiday.name : "";
   }
 
+  const isFormValid =
+    name !== "" &&
+    file !== null &&
+    fileName !== "" &&
+    surnName !== "" &&
+    inValidEmail !== "" &&
+    inValidEmail === false &&
+    selectedDate !== "" &&
+    selectedTime !== "";
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    if (!isFormValid) {
+      alert("Please fill out all fields");
+      return;
+    }
+
+    const formData = {
+      name,
+      surname: surnName,
+      email,
+      age,
+      selectedDate,
+      selectedTime,
+      file,
+    };
+
+    fetch("http://letsworkout.pl/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(formData),
+    })
+      .then(() => console.log("Data sent"))
+      .catch((error) => {
+        throw new Error(error.message);
+      });
+  }
+
   return (
-    <div className="bg-background flex justify-center h-screen w-full pt-[20px] px-[25px]">
-      <form method="POST" className="flex flex-col grow max-w-[426px]">
+    <div className="bg-background flex justify-center h-full w-full py-[20px] px-[25px]">
+      <form
+        method="POST"
+        className="flex flex-col grow max-w-[426px]"
+        onSubmit={handleSubmit}
+      >
         <div className="flex flex-col gap-[32px]">
           <h1 className="text-foreground text-2xl font-medium">
             Personal info
           </h1>
           <div className="flex flex-col gap-[24px]">
             <div className="flex flex-col gap-[2px]">
-              <label htmlFor="name" className="text-foreground font-medium">
+              <label
+                htmlFor="name"
+                className="text-foreground font-medium leading-none tracking-normal"
+              >
                 First Name
               </label>
               <input
-                className="text-foreground bg-white indent-[16px] focus:bg-[#FAF9FA] focus:outline-[#761BE4] border border-[#CBB6E5] a h-[48px] rounded-lg"
+                onChange={(e) =>
+                  setTimeout(() => setName(e.target.value), 1000)
+                }
+                className="text-foreground bg-white indent-[16px] focus:bg-[#FAF9FA] focus:outline-[#761BE4] border border-[#CBB6E5] h-[48px] rounded-lg"
                 name="name"
                 type="text"
                 required
@@ -137,6 +204,9 @@ function App() {
                 Last Name
               </label>
               <input
+                onChange={(e) =>
+                  setTimeout(() => setSurName(e.target.value), 1000)
+                }
                 className="text-foreground bg-white indent-[16px] focus:bg-[#FAF9FA] focus:outline-[#761BE4] border border-[#CBB6E5] h-[48px] rounded-lg"
                 name="surname"
                 type="text"
@@ -151,8 +221,8 @@ function App() {
               <input
                 className={
                   inValidEmail
-                    ? "text-foreground bg-[#FEECEC] border-[#ED4545] indent-[16px] focus:bg-[#FEECEC] focus:outline-[#ED4545] border  a h-[48px] rounded-lg"
-                    : "text-foreground bg-white indent-[16px] focus:bg-[#FAF9FA] focus:outline-[#761BE4] border border-[#CBB6E5] a h-[48px] rounded-lg"
+                    ? "text-foreground bg-[#FEECEC] border-[#ED4545] indent-[16px] focus:bg-[#FEECEC] focus:outline-[#ED4545] border h-[48px] rounded-lg"
+                    : "text-foreground bg-white indent-[16px] focus:bg-[#FAF9FA] focus:outline-[#761BE4] border border-[#CBB6E5] h-[48px] rounded-lg"
                 }
                 name="email"
                 type="text"
@@ -179,44 +249,55 @@ function App() {
               <div className="flex justify-between *:text-[#000853] *:text-xs">
                 <p className="ml-1">8</p> <p>100</p>
               </div>
-              <input
-                defaultValue={age}
-                onChange={(e) => setAge(+e.target.value)}
-                min={8}
-                max={100}
-                name="age"
-                type="range"
-                className="accent-[#761BE4]"
-                required
-              />
-              <div className="flex justify-center items-center w-[37px] h-[31px] bg-white text-xs *:text-[#761BE4] rounded-sm border border-[#CBB6E5]">
-                {age}
+              <div className="relative">
+                <input
+                  ref={rangeRef}
+                  defaultValue={age}
+                  onChange={(e) => handleChangeOfRange(+e.target.value)}
+                  min={8}
+                  max={100}
+                  name="age"
+                  type="range"
+                  className="accent-[#761BE4] w-full"
+                  required
+                />
+                <div
+                  style={{
+                    left: `${thumbPosition}%`,
+                  }}
+                  className="flex absolute bottom-[-25px]  justify-center items-center w-[37px] h-[31px] bg-white text-xs *:text-[#761BE4] rounded-sm border border-[#CBB6E5]"
+                >
+                  {age}
+                </div>
               </div>
             </div>
-            <div className="flex flex-col gap-[2px]">
-              <label htmlFor="age" className="text-foreground font-medium">
+            <div className="flex flex-col gap-[2px] pt-[24px]">
+              <label htmlFor="photo" className="text-foreground font-medium">
                 Photo
               </label>
               <div
                 onDrop={(e) => {
                   e.preventDefault();
                   if (e.dataTransfer.files.length > 0) {
-                    handleChange(e.dataTransfer.files[0].name);
+                    const droppedFile = e.dataTransfer.files[0];
+                    setFileName(droppedFile.name);
+                    setFile(droppedFile);
                   }
                 }}
                 onDragOver={(e) => e.preventDefault()}
-                className=" flex justify-center items-center bg-white h-[96px] border border-[#CBB6E5] rounded-md cursor-pointer *:cursor-pointer"
+                className="flex justify-center items-center bg-white h-[96px] border border-[#CBB6E5] rounded-md cursor-pointer"
               >
-                {file ? (
+                {fileName ? (
                   <div className="flex items-center gap-2">
-                    {file}
+                    {fileName}
                     <button
                       className="cursor-pointer"
                       onMouseEnter={() => setHoverButton(true)}
                       onMouseLeave={() => setHoverButton(false)}
                       onClick={() => {
                         if (fileInputRef.current) {
-                          setFile("");
+                          setFileName("");
+                          setFile(null);
                           fileInputRef.current.value = "";
                         }
                       }}
@@ -238,12 +319,12 @@ function App() {
                     }
                   >
                     <p className="underline text-[#761BE4]">Upload an Image</p>
-                    <p>or drag and drop here</p>
+                    <p className="hidden sm:block">or drag and drop here</p>
                   </button>
                 )}
 
                 <input
-                  onChange={(e) => handleChange(e.target.value)}
+                  onChange={handleFileChange}
                   multiple={false}
                   ref={fileInputRef}
                   type="file"
@@ -263,7 +344,10 @@ function App() {
                   <button
                     className="cursor-pointer"
                     type="button"
-                    onClick={() => setCurrentDate(subMonths(currentDate, 1))}
+                    onClick={() => {
+                      setSelectedDate("");
+                      setCurrentDate(subMonths(currentDate, 1));
+                    }}
                   >
                     <img src="/arrow-left.svg" alt="Previous Month" />
                   </button>
@@ -271,7 +355,10 @@ function App() {
                   <button
                     className="cursor-pointer"
                     type="button"
-                    onClick={() => setCurrentDate(subMonths(currentDate, -1))}
+                    onClick={() => {
+                      setSelectedDate("");
+                      setCurrentDate(subMonths(currentDate, -1));
+                    }}
                   >
                     <img src="/arrow-right.svg" alt="Next Month" />
                   </button>
@@ -286,27 +373,33 @@ function App() {
                         {day[0] + day[1]}
                       </div>
                     ))}
-                    {Array.from({ length: startDayIndex - 1 }).map(
-                      (_, index) => {
-                        return <div key={`e-${index}`} />;
-                      }
-                    )}
+                    {Array.from({ length: startDayIndex }).map((_, index) => (
+                      <div key={`empty-${index}`} />
+                    ))}
                     {daysInMonth.map((day) => {
-                      const isSelected = selectedDate === format(day, "dd");
+                      const formattedDay = format(day, "yyyy-MM-dd");
+                      const isSelected = selectedDate === formattedDay;
                       const ableToWorkout = isAbleToWorkout(format(day, "dd"));
+                      const dayName = format(day, "EEEE");
+                      const isSunday = dayName === "Sunday";
+
                       return (
                         <div
-                          key={day.toDateString()}
+                          key={formattedDay}
                           onClick={() => {
-                            if (ableToWorkout) {
-                              setSelectedDate(format(day, "dd"));
+                            if (ableToWorkout && !isSunday) {
+                              setSelectedDate(formattedDay);
                             }
                           }}
                           className={`cursor-pointer size-8 flex justify-center items-center ${
                             isSelected
                               ? "bg-[#761BE4] text-white rounded-full size-8"
                               : ""
-                          } ${ableToWorkout ? "" : "text-[#898DA9]"}`}
+                          } ${
+                            ableToWorkout && !isSunday
+                              ? ""
+                              : "text-[#898DA9] cursor-not-allowed"
+                          }`}
                         >
                           <p>{format(day, "d")}</p>
                         </div>
@@ -347,8 +440,12 @@ function App() {
         </div>
 
         <button
-          disabled
-          className="cursor-pointer py-[16px] text-white text-lg px-[32px] bg-[#761BE4] rounded-sm mt-[48px]"
+          disabled={!isFormValid}
+          className={
+            isFormValid
+              ? "cursor-pointer py-[16px] text-white text-lg px-[32px] bg-[#761BE4] rounded-sm mt-[48px] hover:bg-[#6A19CD]"
+              : "cursor-pointer py-[16px] text-white text-lg px-[32px] bg-[#CBB6E5] rounded-sm mt-[48px]"
+          }
           type="submit"
         >
           Send Application
