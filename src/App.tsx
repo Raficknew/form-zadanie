@@ -1,18 +1,65 @@
-import { format } from "date-fns";
-import { useRef, useState } from "react";
+import {
+  eachDayOfInterval,
+  endOfMonth,
+  format,
+  getDay,
+  startOfMonth,
+  subMonths,
+} from "date-fns";
+import { useEffect, useRef, useState } from "react";
 
 const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+const WORKOUT_TIMES = ["12:00", "14:00", "16:30", "18:30", "20:00"];
 
 function App() {
-  const currentDate = new Date();
+  const key = import.meta.env.VITE_API_KEY;
+
   const [inValidEmail, setInValidEmail] = useState<boolean | string>("");
+
   const [age, setAge] = useState(8);
+
   const [file, setFile] = useState("");
   const [hoverButton, setHoverButton] = useState(false);
 
+  const [currentDate, setCurrentDate] = useState(new Date());
+  interface FreeDay {
+    date: string;
+    type: string;
+    name: string;
+  }
+
+  const [freeDays, setFreeDays] = useState<FreeDay[]>();
+  const firstDayOfMonth = startOfMonth(currentDate);
+  const lastDayOfMonth = endOfMonth(currentDate);
+  const daysInMonth = eachDayOfInterval({
+    start: firstDayOfMonth,
+    end: lastDayOfMonth,
+  });
+  const startDayIndex = getDay(firstDayOfMonth);
+  const [selectedDate, setSelectedDate] = useState("");
+  const holiday = isHolidayDay(selectedDate);
+  const [selectedTime, setSelectedTime] = useState("");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const days = fetchDays();
+  useEffect(() => {
+    fetch("https://api.api-ninjas.com/v1/holidays?country=PL", {
+      method: "GET",
+      headers: {
+        "X-Api-Key": key,
+      },
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("failed to fetch days");
+        }
+        return response.json();
+      })
+      .then((data) => setFreeDays(data))
+      .catch((error) => {
+        throw new Error(error.message);
+      });
+  }, [key]);
 
   const handleChange = (path: string) => {
     const filePath = path;
@@ -25,6 +72,7 @@ function App() {
 
     setFile(fileName);
   };
+
   function validateEmail(email: string) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (emailRegex.test(email) == false) {
@@ -32,6 +80,36 @@ function App() {
     } else {
       setInValidEmail(false);
     }
+  }
+
+  function isAbleToWorkout(day: string): boolean {
+    const freeDaysInCurrentMonth = freeDays?.filter(
+      (date) => date.date.split("-")[1] === format(currentDate, "MM")
+    );
+
+    if (!freeDaysInCurrentMonth) return true;
+
+    const isNationalDay = freeDaysInCurrentMonth?.some(
+      (freeDay) =>
+        freeDay.date.split("-")[2] === day &&
+        freeDay.type === "national_holiday"
+    );
+
+    return !isNationalDay;
+  }
+
+  function isHolidayDay(day: string): string {
+    const freeDaysInCurrentMonth = freeDays?.filter(
+      (date) => date.date.split("-")[1] === format(currentDate, "MM")
+    );
+
+    if (!freeDaysInCurrentMonth) return "";
+
+    const holiday = freeDaysInCurrentMonth.find(
+      (freeDay) => freeDay.date.split("-")[2] === day
+    );
+
+    return holiday ? holiday.name : "";
   }
 
   return (
@@ -177,33 +255,99 @@ function App() {
         </div>
         <div className="pt-[48px]">
           <h1 className="text-foreground text-2xl font-medium">Your workout</h1>
-          <label>Date</label>
-          <div className="bg-white h-[292px] p-6 rounded-[8px] border border-[#CBB6E5]">
-            <div className="flex justify-between items-center">
-              <button className="cursor-pointer" type="button">
-                <img src="/arrow-left.svg" />
-              </button>
-              <h4>{format(currentDate, "MMMM yyyy")}</h4>
-              <button className="cursor-pointer" type="button">
-                <img src="/arrow-right.svg" />
-              </button>
-            </div>
-            <div className="w-full">
-              <div className="grid grid-cols-7 gap-2 p-2">
-                {WEEKDAYS.map((day) => (
-                  <div className="flex text-[14px] text-[#000853]" key={day}>
-                    {day[0] + day[1]}
+          <div className="flex flex-wrap justify-between">
+            <div className="flex flex-col gap-[8px]">
+              <label>Date</label>
+              <div className="bg-white p-6 rounded-[8px] border border-[#CBB6E5]">
+                <div className="flex justify-between items-center">
+                  <button
+                    className="cursor-pointer"
+                    type="button"
+                    onClick={() => setCurrentDate(subMonths(currentDate, 1))}
+                  >
+                    <img src="/arrow-left.svg" alt="Previous Month" />
+                  </button>
+                  <h4>{format(currentDate, "MMMM yyyy")}</h4>
+                  <button
+                    className="cursor-pointer"
+                    type="button"
+                    onClick={() => setCurrentDate(subMonths(currentDate, -1))}
+                  >
+                    <img src="/arrow-right.svg" alt="Next Month" />
+                  </button>
+                </div>
+                <div className="w-full">
+                  <div className="grid grid-cols-7 gap-2 p-2">
+                    {WEEKDAYS.map((day) => (
+                      <div
+                        className="flex text-[14px] text-[#000853]"
+                        key={day}
+                      >
+                        {day[0] + day[1]}
+                      </div>
+                    ))}
+                    {Array.from({ length: startDayIndex - 1 }).map(
+                      (_, index) => {
+                        return <div key={`e-${index}`} />;
+                      }
+                    )}
+                    {daysInMonth.map((day) => {
+                      const isSelected = selectedDate === format(day, "dd");
+                      const ableToWorkout = isAbleToWorkout(format(day, "dd"));
+                      return (
+                        <div
+                          key={day.toDateString()}
+                          onClick={() => {
+                            if (ableToWorkout) {
+                              setSelectedDate(format(day, "dd"));
+                            }
+                          }}
+                          className={`cursor-pointer size-8 flex justify-center items-center ${
+                            isSelected
+                              ? "bg-[#761BE4] text-white rounded-full size-8"
+                              : ""
+                          } ${ableToWorkout ? "" : "text-[#898DA9]"}`}
+                        >
+                          <p>{format(day, "d")}</p>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                </div>
               </div>
-              {days.then((holiday) => console.log(holiday))}
             </div>
+            {selectedDate && holiday == "" && (
+              <div className="flex flex-col gap-[8px]">
+                <label>Time</label>
+                <div className="flex md:flex-col flex-row gap-2 flex-wrap text-center">
+                  {WORKOUT_TIMES.map((time) => (
+                    <div
+                      key={time}
+                      onClick={() =>
+                        selectedTime != time && setSelectedTime(time)
+                      }
+                      className={`cursor-pointer px-3 py-2 bg-white border border-[#CBB6E5] rounded-lg ${
+                        selectedTime == time &&
+                        "outline-[2px] outline-[#761BE4]"
+                      }`}
+                    >
+                      {time}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+          {holiday !== "" && (
+            <div className="flex gap-2">
+              <img src="/info-icon.svg" />
+              <p className="text-foreground">{holiday}</p>
+            </div>
+          )}
         </div>
 
         <button
           disabled
-          onClick={() => console.log()}
           className="cursor-pointer py-[16px] text-white text-lg px-[32px] bg-[#761BE4] rounded-sm mt-[48px]"
           type="submit"
         >
@@ -213,28 +357,5 @@ function App() {
     </div>
   );
 }
-
-const fetchDays = async () => {
-  try {
-    const response = await fetch(
-      "https://api.api-ninjas.com/v1/holidays?country=PL",
-      {
-        method: "GET",
-        headers: {
-          "X-Api-Key": import.meta.env.VITE_API_KEY,
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch data`);
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error("Error fetching holidays", error);
-  }
-};
 
 export default App;
